@@ -1,0 +1,76 @@
+import {
+  bearer,
+  database,
+  groupForToken,
+  isTeacher,
+  jsonError,
+  readClassroom,
+} from '@/lib/classroom-db';
+import { validateMeasurements } from '@/lib/classroom-types';
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ code: string }> },
+) {
+  const { code } = await params;
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body || typeof body.kind !== 'string') return jsonError('提交内容无效');
+  const classroom = await readClassroom(code);
+  if (!classroom) return jsonError('课堂码不存在或已过期', 404);
+
+  const teacher = await isTeacher(request, code);
+  const claimedGroup = teacher
+    ? typeof body.groupNumber === 'number'
+      ? body.groupNumber
+      : null
+    : (await groupForToken(request, code))?.groupNumber;
+  if (!claimedGroup || claimedGroup < 1 || claimedGroup > classroom.groupCount) {
+    return jsonError(bearer(request) ? '小组身份无效' : '请先加入小组', 401);
+  }
+  if (classroom.submissionsPaused && !teacher) return jsonError('教师已暂停提交', 423);
+
+  const db = database();
+  const now = new Date().toISOString();
+  if (body.kind === 'prediction') {
+    const allowed = ['直接搬', '找人帮忙', '使用斜面'];
+    if (typeof body.value !== 'string' || !allowed.includes(body.value)) {
+      return jsonError('请选择一种搬运方案');
+    }
+    await db
+      .prepare(
+        "UPDATE classroom_groups SET prediction = ?, status = 'submitted', last_seen_at = ? WHERE session_code = ? AND group_number = ?",
+      )
+      .bind(body.value, now, code, claimedGroup)
+      .run();
+  } else if (body.kind === 'measurements') {
+    if (!validateMeasurements(body.measurements)) {
+      return jsonError('每种情况需要填写 3 次 0–20 N 的有效拉力');
+    }
+    if (typeof body.conclusion !== 'string' || body.conclusion.trim().length < 4) {
+      return jsonError('请写下小组根据数据形成的发现');
+    }
+    await db
+      .prepare(
+        "UPDATE classroom_groups SET measurements_json = ?, conclusion = ?, status = 'submitted', last_seen_at = ? WHERE session_code = ? AND group_number = ?",
+      )
+      .bind(JSON.stringify(body.measurements), body.conclusion.trim().slice(0, 120), now, code, claimedGroup)
+      .run();
+  } else if (body.kind === 'route') {
+    const allowed = ['直上路线', '折线路线', '盘绕路线'];
+    if (typeof body.routeType !== 'string' || !allowed.includes(body.routeType)) {
+      return jsonError('请选择一种上山路线');
+    }
+    if (typeof body.reason !== 'string' || body.reason.trim().length < 4) {
+      return jsonError('请说明选择这条路线的理由');
+    }
+    await db
+      .prepare(
+        "UPDATE classroom_groups SET route_type = ?, route_reason = ?, status = 'submitted', last_seen_at = ? WHERE session_code = ? AND group_number = ?",
+      )
+      .bind(body.routeType, body.reason.trim().slice(0, 120), now, code, claimedGroup)
+      .run();
+  } else {
+    return jsonError('未知的提交类型');
+  }
+  return Response.json({ ok: true, groupNumber: claimedGroup });
+}

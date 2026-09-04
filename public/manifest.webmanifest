@@ -1,0 +1,13 @@
+{
+  "name": "斜面｜胡拉拉搬家公司科学公开课",
+  "short_name": "斜面公开课",
+  "description": "教师大屏与小组实时互动的六年级科学课堂平台",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef8fb",
+  "theme_color": "#1769aa",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
