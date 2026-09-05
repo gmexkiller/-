@@ -8,6 +8,13 @@
       "when": 1788534547297,
       "tag": "0000_puzzling_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788628839900,
+      "tag": "0001_unknown_kitty_pryde",
+      "breakpoints": true
     }
   ]
 }

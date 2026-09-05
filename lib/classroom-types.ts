@@ -17,6 +17,8 @@ export type GroupRecord = {
   conclusion: string | null;
   routeType: string | null;
   routeReason: string | null;
+  routePlan: RoutePlan | null;
+  routeMetrics: RouteMetrics | null;
   status: 'waiting' | 'submitted' | 'needs_changes' | 'locked';
 };
 
@@ -25,6 +27,7 @@ export type ClassroomState = {
   groupCount: number;
   scene: number;
   answerRevealed: boolean;
+  engineeringRevealed: boolean;
   submissionsPaused: boolean;
   startedAt: string;
   expiresAt: string;
@@ -57,3 +60,4 @@ export function validateMeasurements(value: unknown): value is Measurements {
     );
   });
 }
+import type { RouteMetrics, RoutePlan } from '@/lib/route-design';

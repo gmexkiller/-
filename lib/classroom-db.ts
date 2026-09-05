@@ -1,6 +1,13 @@
 import { env } from 'cloudflare:workers';
 
 import type { ClassroomState, GroupRecord, Measurements } from '@/lib/classroom-types';
+import {
+  calculateRouteMetrics,
+  isRoutePlan,
+  legacyRoutePlan,
+  normalizeRoutePlan,
+  type RoutePlan,
+} from '@/lib/route-design';
 
 export function database() {
   if (!env.DB) throw new Error('课堂数据库暂不可用');
@@ -46,6 +53,7 @@ type SessionRow = {
   groupCount: number;
   scene: number;
   answerRevealed: number;
+  engineeringRevealed: number;
   submissionsPaused: number;
   startedAt: string;
   expiresAt: string;
@@ -61,6 +69,7 @@ type GroupRow = {
   conclusion: string | null;
   routeType: string | null;
   routeReason: string | null;
+  routePlanJson: string | null;
   status: GroupRecord['status'];
 };
 
@@ -69,6 +78,7 @@ export async function readClassroom(code: string): Promise<ClassroomState | null
   const session = await db
     .prepare(
       `SELECT code, group_count AS groupCount, scene, answer_revealed AS answerRevealed,
+       engineering_revealed AS engineeringRevealed,
        submissions_paused AS submissionsPaused, started_at AS startedAt,
        expires_at AS expiresAt, updated_at AS updatedAt
        FROM classroom_sessions WHERE code = ? AND expires_at > ?`,
@@ -81,34 +91,53 @@ export async function readClassroom(code: string): Promise<ClassroomState | null
     .prepare(
       `SELECT group_number AS groupNumber, device_token_hash AS deviceTokenHash,
        last_seen_at AS lastSeenAt, prediction, measurements_json AS measurementsJson,
-       conclusion, route_type AS routeType, route_reason AS routeReason, status
+       conclusion, route_type AS routeType, route_reason AS routeReason,
+       route_plan_json AS routePlanJson, status
        FROM classroom_groups WHERE session_code = ? ORDER BY group_number`,
     )
     .bind(code)
     .all<GroupRow>();
+
+  function planFor(group: GroupRow): RoutePlan | null {
+    if (group.routePlanJson) {
+      try {
+        const parsed = JSON.parse(group.routePlanJson) as unknown;
+        if (isRoutePlan(parsed)) return normalizeRoutePlan(parsed);
+      } catch {
+        // Fall back to the legacy route fields below.
+      }
+    }
+    return group.routeType ? legacyRoutePlan(group.routeType, group.routeReason || '') : null;
+  }
 
   return {
     code: session.code,
     groupCount: session.groupCount,
     scene: session.scene,
     answerRevealed: Boolean(session.answerRevealed),
+    engineeringRevealed: Boolean(session.engineeringRevealed),
     submissionsPaused: Boolean(session.submissionsPaused),
     startedAt: session.startedAt,
     expiresAt: session.expiresAt,
     updatedAt: session.updatedAt,
-    groups: result.results.map((group) => ({
-      groupNumber: group.groupNumber,
-      joined: Boolean(group.deviceTokenHash),
-      lastSeenAt: group.lastSeenAt,
-      prediction: group.prediction,
-      measurements: group.measurementsJson
-        ? (JSON.parse(group.measurementsJson) as Measurements)
-        : null,
-      conclusion: group.conclusion,
-      routeType: group.routeType,
-      routeReason: group.routeReason,
-      status: group.status,
-    })),
+    groups: result.results.map((group) => {
+      const routePlan = planFor(group);
+      return {
+        groupNumber: group.groupNumber,
+        joined: Boolean(group.deviceTokenHash),
+        lastSeenAt: group.lastSeenAt,
+        prediction: group.prediction,
+        measurements: group.measurementsJson
+          ? (JSON.parse(group.measurementsJson) as Measurements)
+          : null,
+        conclusion: group.conclusion,
+        routeType: routePlan ? calculateRouteMetrics(routePlan).routeType : group.routeType,
+        routeReason: routePlan?.reason || group.routeReason,
+        routePlan,
+        routeMetrics: routePlan ? calculateRouteMetrics(routePlan) : null,
+        status: group.status,
+      };
+    }),
   };
 }
 

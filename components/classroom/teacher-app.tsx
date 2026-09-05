@@ -1,9 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ArrowLeft,
-  ArrowRight,
   BarChart3,
   CheckCircle2,
   ChevronLeft,
@@ -13,15 +12,12 @@ import {
   Download,
   Expand,
   FlaskConical,
-  House,
   LockKeyhole,
-  Mountain,
   Pause,
   Play,
   QrCode,
   RefreshCcw,
   RotateCcw,
-  Route,
   Ruler,
   Sparkles,
   Truck,
@@ -33,6 +29,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts';
 
 import { Button } from '@/components/ui/button';
+import { RouteCompareScene, RouteDesignScene } from '@/components/classroom/route-teacher-scenes';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -43,6 +40,7 @@ import {
   EMPTY_MEASUREMENTS,
   Measurements,
 } from '@/lib/classroom-types';
+import { calculateRouteMetrics, type RoutePlan } from '@/lib/route-design';
 
 const SCENES = [
   '项目会议',
@@ -134,7 +132,7 @@ export function TeacherApp({ code }: { code: string }) {
   }, [timerRunning]);
 
   const updateState = useCallback(
-    async (patch: Partial<Pick<ClassroomState, 'scene' | 'answerRevealed' | 'submissionsPaused'>>) => {
+    async (patch: Partial<Pick<ClassroomState, 'scene' | 'answerRevealed' | 'engineeringRevealed' | 'submissionsPaused'>>) => {
       if (!state) return;
       const optimistic = { ...state, ...patch, updatedAt: new Date().toISOString() };
       setState(optimistic);
@@ -163,6 +161,7 @@ export function TeacherApp({ code }: { code: string }) {
     if (!state || !teacherToken) return;
     try {
       const resetWasQueued = localStorage.getItem(`incline:pending-reset:${code}`) === '1';
+      const queuedRoutes = JSON.parse(localStorage.getItem(`incline:pending-routes:${code}`) || '[]') as Array<{ groupNumber: number; plan: RoutePlan }>;
       const response = await fetch(`/api/sessions/${code}/state`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${teacherToken}`, 'Content-Type': 'application/json' },
@@ -172,13 +171,30 @@ export function TeacherApp({ code }: { code: string }) {
             : {
                 scene: state.scene,
                 answerRevealed: state.answerRevealed,
+                engineeringRevealed: state.engineeringRevealed,
                 submissionsPaused: state.submissionsPaused,
               },
         ),
       });
       if (!response.ok) throw new Error();
-      const synced = (await response.json()) as ClassroomState;
+      if (!resetWasQueued) {
+        for (const queued of queuedRoutes) {
+          const routeResponse = await fetch(`/api/sessions/${code}/submissions`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${teacherToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind: 'route', groupNumber: queued.groupNumber, routePlan: queued.plan }),
+          });
+          if (!routeResponse.ok) throw new Error();
+        }
+      }
+      const stateResponse = await fetch(`/api/sessions/${code}/state`, {
+        headers: { Authorization: `Bearer ${teacherToken}` },
+        cache: 'no-store',
+      });
+      if (!stateResponse.ok) throw new Error();
+      const synced = (await stateResponse.json()) as ClassroomState;
       localStorage.removeItem(`incline:pending-reset:${code}`);
+      localStorage.removeItem(`incline:pending-routes:${code}`);
       setOffline(false);
       setPendingSync(false);
       setState(synced);
@@ -186,7 +202,39 @@ export function TeacherApp({ code }: { code: string }) {
     } catch {
       setError('网络仍未恢复，教师端可以继续本地授课。');
     }
-  }, [code, fetchState, state, teacherToken]);
+  }, [code, state, teacherToken]);
+
+  const submitRouteForGroup = useCallback(async (groupNumber: number, plan: RoutePlan) => {
+    if (!state) return;
+    if (!teacherToken || offline) {
+      const metrics = calculateRouteMetrics(plan);
+      const localState: ClassroomState = {
+        ...state,
+        groups: state.groups.map((group) => group.groupNumber === groupNumber ? {
+          ...group,
+          routePlan: plan,
+          routeMetrics: metrics,
+          routeType: metrics.routeType,
+          routeReason: plan.reason,
+          status: 'submitted',
+        } : group),
+      };
+      const pending = JSON.parse(localStorage.getItem(`incline:pending-routes:${code}`) || '[]') as Array<{ groupNumber: number; plan: RoutePlan }>;
+      localStorage.setItem(`incline:pending-routes:${code}`, JSON.stringify([...pending.filter((item) => item.groupNumber !== groupNumber), { groupNumber, plan }]));
+      localStorage.setItem(`incline:state:${code}`, JSON.stringify(localState));
+      setState(localState);
+      setPendingSync(true);
+      return;
+    }
+    const response = await fetch(`/api/sessions/${code}/submissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${teacherToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: 'route', groupNumber, routePlan: plan }),
+    });
+    const data = (await response.json()) as { error?: string };
+    if (!response.ok) throw new Error(data.error || '路线代录失败');
+    await fetchState();
+  }, [code, fetchState, offline, state, teacherToken]);
 
   const resetClassroom = useCallback(async () => {
     if (!state) return;
@@ -195,6 +243,7 @@ export function TeacherApp({ code }: { code: string }) {
         ...state,
         scene: 0,
         answerRevealed: false,
+        engineeringRevealed: false,
         submissionsPaused: false,
         groups: state.groups.map((group) => ({
           ...group,
@@ -203,6 +252,8 @@ export function TeacherApp({ code }: { code: string }) {
           conclusion: null,
           routeType: null,
           routeReason: null,
+          routePlan: null,
+          routeMetrics: null,
           status: 'waiting' as const,
         })),
       };
@@ -220,13 +271,14 @@ export function TeacherApp({ code }: { code: string }) {
     });
     if (response.ok) {
       setElapsed(0);
+      localStorage.removeItem(`incline:pending-routes:${code}`);
       await fetchState();
     }
   }, [code, fetchState, offline, state, teacherToken]);
 
   function exportCsv() {
     if (!state) return;
-    const header = ['小组', ...CONDITIONS.flatMap((item) => [`${item.label}1`, `${item.label}2`, `${item.label}3`, `${item.label}平均`]), '小组发现', '路线', '理由'];
+    const header = ['小组', ...CONDITIONS.flatMap((item) => [`${item.label}1`, `${item.label}2`, `${item.label}3`, `${item.label}平均`]), '小组发现', '路线类型', '设计目标', '节点1', '节点2', '节点3', '相对路程', '最陡路段', '转弯次数', '证据标签', '路线理由'];
     const rows = state.groups.map((group) => [
       `第${group.groupNumber}组`,
       ...CONDITIONS.flatMap(({ key }) => {
@@ -235,6 +287,12 @@ export function TeacherApp({ code }: { code: string }) {
       }),
       group.conclusion || '',
       group.routeType || '',
+      group.routePlan?.strategy || '',
+      ...(group.routePlan?.waypointXs || ['', '', '']),
+      group.routeMetrics?.lengthRatio || '',
+      group.routeMetrics?.steepnessLabel || '',
+      group.routeMetrics?.turnCount ?? '',
+      group.routePlan?.evidenceTags.join('、') || '',
       group.routeReason || '',
     ]);
     const csv = [header, ...rows]
@@ -300,7 +358,7 @@ export function TeacherApp({ code }: { code: string }) {
       <div className="flex min-h-0 flex-1 flex-col xl:grid xl:grid-cols-[minmax(0,1fr)_280px]">
         <section className="relative min-h-[calc(100vh-170px)] overflow-hidden p-3 md:p-5">
           <div className="mx-auto flex aspect-video max-h-[calc(100vh-190px)] min-h-[620px] w-full max-w-[1320px] flex-col overflow-hidden rounded-[1.75rem] border border-white bg-white shadow-[0_25px_80px_rgba(27,73,102,0.12)]">
-            <SceneContent state={state} joinUrl={joinUrl} teacherToken={teacherToken} updateState={updateState} />
+            <SceneContent state={state} joinUrl={joinUrl} teacherToken={teacherToken} offline={offline} updateState={updateState} submitRoute={submitRouteForGroup} />
           </div>
         </section>
 
@@ -389,12 +447,16 @@ function SceneContent({
   state,
   joinUrl,
   teacherToken,
+  offline,
   updateState,
+  submitRoute,
 }: {
   state: ClassroomState;
   joinUrl: string;
   teacherToken: string;
+  offline: boolean;
   updateState: (patch: Partial<ClassroomState>) => Promise<void>;
+  submitRoute: (groupNumber: number, plan: RoutePlan) => Promise<void>;
 }) {
   switch (state.scene) {
     case 0:
@@ -410,9 +472,9 @@ function SceneContent({
     case 5:
       return <ConclusionScene state={state} updateState={updateState} />;
     case 6:
-      return <RouteDesignScene state={state} />;
+      return <RouteDesignScene state={state} teacherToken={teacherToken} offline={offline} submitRoute={submitRoute} />;
     case 7:
-      return <RouteCompareScene state={state} />;
+      return <RouteCompareScene state={state} updateState={updateState} />;
     default:
       return <TransferScene />;
   }
@@ -540,17 +602,6 @@ function MeasurementGrid({ measurements, setMeasurements, compact = false }: { m
 function ConclusionScene({ state, updateState }: { state: ClassroomState; updateState: (patch: Partial<ClassroomState>) => Promise<void> }) {
   const data = classAverages(state);
   return <div className="flex h-full flex-col p-[clamp(1.5rem,3vw,3rem)]"><div className="flex items-center justify-between"><SceneLabel icon={Sparkles} tone="green">研讨 · 用证据形成结论</SceneLabel><Button onClick={() => void updateState({ answerRevealed: !state.answerRevealed })} className={state.answerRevealed ? 'bg-emerald-600 text-white' : 'bg-orange-500 text-white hover:bg-orange-600'}>{state.answerRevealed ? <RotateCcw className="size-4" /> : <LockKeyhole className="size-4" />}{state.answerRevealed ? '重新隐藏' : '揭示科学结论'}</Button></div><div className="mt-5 grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(330px,0.62fr)] gap-6"><ChartContainer config={{ value: { label: '平均拉力', color: '#1769aa' } }} className="min-h-0 rounded-[2rem] bg-slate-50 p-4"><BarChart data={data} accessibilityLayer><CartesianGrid vertical={false} /><XAxis dataKey="name" /><YAxis unit="N" /><Bar dataKey="value" fill="#1769aa" radius={[12, 12, 0, 0]} /></BarChart></ChartContainer><div className="flex min-h-0 flex-col justify-center overflow-auto rounded-[2rem] border-2 border-dashed border-emerald-200 bg-emerald-50 p-7"><p className="text-base font-black text-emerald-700">我的发现</p>{state.answerRevealed ? <div className="mt-4 space-y-4 text-[clamp(1.4rem,2vw,2.25rem)] font-black leading-tight"><p>使用斜面可以<span className="text-orange-600">省力</span>。</p><p>斜面越<span className="text-primary">平缓</span>，需要的拉力越<span className="text-primary">小</span>。</p><p>同时，移动的距离会更<span className="text-orange-600">长</span>。</p></div> : <div className="mt-4 space-y-4 text-[clamp(1.4rem,2vw,2.25rem)] font-black leading-tight text-slate-400"><p>使用斜面可以 ______。</p><p>斜面越 ______，需要的拉力越 ______。</p><p>同时，移动的距离会更 ______。</p></div>}<p className="mt-5 text-sm font-bold leading-6 text-slate-500">请先让项目组根据实验数据发言，再揭示并完善科学表达。</p></div></div></div>;
-}
-
-function RouteDesignScene({ state }: { state: ClassroomState }) {
-  const submitted = state.groups.filter((group) => group.routeType).length;
-  return <div className="relative flex h-full flex-col overflow-hidden bg-[linear-gradient(180deg,#dff3fa_0_58%,#d9e9c4_58%)] p-[clamp(1.7rem,3vw,3rem)]"><SceneLabel icon={Mountain} tone="orange">应用 · 搬家测试 2</SceneLabel><div className="relative z-10 mt-4 max-w-3xl"><h2 className="text-[clamp(2.6rem,4vw,4.3rem)] font-black leading-tight">货车怎样平稳上山？</h2><p className="mt-3 text-xl font-bold text-slate-600">设计路线，测试并改进。比较坡度、路程和稳定性。</p></div><div className="relative z-10 mt-auto grid grid-cols-4 gap-3">{state.groups.map((group) => <div key={group.groupNumber} className="min-h-28 rounded-2xl border border-white bg-white/88 p-4 shadow-lg backdrop-blur"><div className="flex items-center justify-between"><p className="font-black text-primary">第{group.groupNumber}组</p>{group.routeType && <Route className="size-5 text-orange-500" />}</div><p className="mt-2 text-lg font-black">{group.routeType || '等待方案'}</p><p className="mt-1 line-clamp-2 text-xs font-bold leading-5 text-slate-500">{group.routeReason || '完成赛道测试后提交路线与理由'}</p></div>)}</div><div className="absolute bottom-0 right-0 h-[76%] w-[52%] rounded-tl-[70%] bg-[linear-gradient(140deg,#7eb45d,#3f8b4b)] opacity-55" /><Truck className="absolute bottom-[22%] right-[42%] size-16 text-orange-500" /><span className="absolute right-8 top-8 rounded-full bg-white/85 px-4 py-2 text-sm font-black text-primary">{submitted}/{state.groupCount} 组已提交</span></div>;
-}
-
-function RouteCompareScene({ state }: { state: ClassroomState }) {
-  const [route, setRoute] = useState<'直上路线' | '折线路线' | '盘绕路线'>('盘绕路线');
-  const info = { 直上路线: ['坡度大', '路程短', '较费力'], 折线路线: ['坡度中等', '路程中等', '较稳定'], 盘绕路线: ['坡度平缓', '路程长', '更省力'] }[route];
-  return <div className="flex h-full flex-col p-[clamp(2rem,4vw,4rem)]"><SceneLabel icon={Route} tone="green">工程 · 比较路线方案</SceneLabel><div className="mt-5 grid flex-1 grid-cols-[1.2fr_0.8fr] gap-8"><div className="relative overflow-hidden rounded-[2rem] bg-[linear-gradient(#dff3fb_0_48%,#dcebc7_48%)]"><div className="absolute bottom-0 right-0 h-[78%] w-[78%] rounded-tl-[100%] bg-[linear-gradient(145deg,#7fbb62,#3d8b4f)]" /><svg viewBox="0 0 600 420" className="absolute inset-0 h-full w-full" aria-label={`${route}示意`}><path d={route === '直上路线' ? 'M70 350 L510 75' : route === '折线路线' ? 'M70 350 L280 300 L185 215 L400 170 L510 75' : 'M70 350 C260 375 375 320 275 270 C180 215 340 180 470 190 C545 195 560 125 510 75'} fill="none" stroke="white" strokeWidth="22" strokeLinecap="round" strokeLinejoin="round" /><path d={route === '直上路线' ? 'M70 350 L510 75' : route === '折线路线' ? 'M70 350 L280 300 L185 215 L400 170 L510 75' : 'M70 350 C260 375 375 320 275 270 C180 215 340 180 470 190 C545 195 560 125 510 75'} fill="none" stroke="#f58a2c" strokeWidth="5" strokeDasharray="12 12" /></svg><Truck className="absolute bottom-[12%] left-[10%] size-16 text-orange-500" /><House className="absolute right-[8%] top-[7%] size-16 text-white" /></div><div className="flex flex-col justify-center"><h2 className="text-4xl font-black">同样到达山顶，路线有什么不同？</h2><div className="mt-6 grid gap-3">{(['直上路线', '折线路线', '盘绕路线'] as const).map((item) => <button key={item} type="button" onClick={() => setRoute(item)} className={`rounded-2xl border-2 p-4 text-left text-xl font-black transition ${route === item ? 'border-primary bg-primary text-white' : 'border-slate-200 bg-white'}`}>{item}<span className="ml-3 text-sm opacity-70">{state.groups.filter((group) => group.routeType === item).length} 组选择</span></button>)}</div><div className="mt-6 grid grid-cols-3 gap-2">{info.map((item) => <span key={item} className="rounded-xl bg-emerald-100 p-3 text-center text-sm font-black text-emerald-800">{item}</span>)}</div></div></div></div>;
 }
 
 function TransferScene() {

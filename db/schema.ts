@@ -8,6 +8,7 @@ export const classroomSessions = sqliteTable(
     groupCount: integer('group_count').notNull(),
     scene: integer('scene').notNull().default(0),
     answerRevealed: integer('answer_revealed', { mode: 'boolean' }).notNull().default(false),
+    engineeringRevealed: integer('engineering_revealed', { mode: 'boolean' }).notNull().default(false),
     submissionsPaused: integer('submissions_paused', { mode: 'boolean' }).notNull().default(false),
     startedAt: text('started_at').notNull(),
     expiresAt: text('expires_at').notNull(),
@@ -32,6 +33,7 @@ export const classroomGroups = sqliteTable(
     conclusion: text('conclusion'),
     routeType: text('route_type'),
     routeReason: text('route_reason'),
+    routePlanJson: text('route_plan_json'),
     status: text('status').notNull().default('waiting'),
   },
   (table) => [

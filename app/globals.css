@@ -96,3 +96,27 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+@keyframes route-arrive {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  55% {
+    box-shadow: 0 0 0 6px rgba(31, 157, 113, 0.16);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.route-arrive {
+  animation: route-arrive 700ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-arrive {
+    animation: none;
+  }
+}

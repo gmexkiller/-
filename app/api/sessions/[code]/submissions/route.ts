@@ -7,6 +7,13 @@ import {
   readClassroom,
 } from '@/lib/classroom-db';
 import { validateMeasurements } from '@/lib/classroom-types';
+import {
+  calculateRouteMetrics,
+  isRoutePlan,
+  legacyRoutePlan,
+  normalizeRoutePlan,
+  type RoutePlan,
+} from '@/lib/route-design';
 
 export async function POST(
   request: Request,
@@ -57,17 +64,25 @@ export async function POST(
       .run();
   } else if (body.kind === 'route') {
     const allowed = ['直上路线', '折线路线', '盘绕路线'];
-    if (typeof body.routeType !== 'string' || !allowed.includes(body.routeType)) {
-      return jsonError('请选择一种上山路线');
+    let routePlan: RoutePlan;
+    if (isRoutePlan(body.routePlan)) {
+      routePlan = normalizeRoutePlan(body.routePlan);
+    } else if (
+      typeof body.routeType === 'string' &&
+      allowed.includes(body.routeType) &&
+      typeof body.reason === 'string' &&
+      body.reason.trim().length >= 4
+    ) {
+      routePlan = legacyRoutePlan(body.routeType, body.reason.trim().slice(0, 120));
+    } else {
+      return jsonError('请完成路线设计、选择证据并说明理由');
     }
-    if (typeof body.reason !== 'string' || body.reason.trim().length < 4) {
-      return jsonError('请说明选择这条路线的理由');
-    }
+    const metrics = calculateRouteMetrics(routePlan);
     await db
       .prepare(
-        "UPDATE classroom_groups SET route_type = ?, route_reason = ?, status = 'submitted', last_seen_at = ? WHERE session_code = ? AND group_number = ?",
+        "UPDATE classroom_groups SET route_type = ?, route_reason = ?, route_plan_json = ?, status = 'submitted', last_seen_at = ? WHERE session_code = ? AND group_number = ?",
       )
-      .bind(body.routeType, body.reason.trim().slice(0, 120), now, code, claimedGroup)
+      .bind(metrics.routeType, routePlan.reason, JSON.stringify(routePlan), now, code, claimedGroup)
       .run();
   } else {
     return jsonError('未知的提交类型');

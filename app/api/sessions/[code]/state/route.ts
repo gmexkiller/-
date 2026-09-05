@@ -38,13 +38,13 @@ export async function PATCH(
     await db.batch([
       db
         .prepare(
-          'UPDATE classroom_sessions SET scene = 0, answer_revealed = 0, submissions_paused = 0, updated_at = ? WHERE code = ?',
+          'UPDATE classroom_sessions SET scene = 0, answer_revealed = 0, engineering_revealed = 0, submissions_paused = 0, updated_at = ? WHERE code = ?',
         )
         .bind(now, code),
       db
         .prepare(
           `UPDATE classroom_groups SET prediction = NULL, measurements_json = NULL, conclusion = NULL,
-           route_type = NULL, route_reason = NULL, status = 'waiting' WHERE session_code = ?`,
+           route_type = NULL, route_reason = NULL, route_plan_json = NULL, status = 'waiting' WHERE session_code = ?`,
         )
         .bind(code),
     ]);
@@ -53,7 +53,7 @@ export async function PATCH(
       .prepare(
         `UPDATE classroom_groups SET device_token_hash = NULL, joined_at = NULL, last_seen_at = NULL,
          prediction = NULL, measurements_json = NULL, conclusion = NULL, route_type = NULL,
-         route_reason = NULL, status = 'waiting' WHERE session_code = ? AND group_number = ?`,
+         route_reason = NULL, route_plan_json = NULL, status = 'waiting' WHERE session_code = ? AND group_number = ?`,
       )
       .bind(code, body.resetGroup)
       .run();
@@ -74,6 +74,10 @@ export async function PATCH(
     if (typeof body.answerRevealed === 'boolean') {
       updates.push('answer_revealed = ?');
       values.push(body.answerRevealed ? 1 : 0);
+    }
+    if (typeof body.engineeringRevealed === 'boolean') {
+      updates.push('engineering_revealed = ?');
+      values.push(body.engineeringRevealed ? 1 : 0);
     }
     if (typeof body.submissionsPaused === 'boolean') {
       updates.push('submissions_paused = ?');
