@@ -1,0 +1,5 @@
+#!/bin/bash
+export PORT=9000
+export HOSTNAME=0.0.0.0
+cd /var/user
+/var/lang/node20/bin/node server.js

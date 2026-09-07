@@ -1,4 +1,5 @@
-import { env } from 'cloudflare:workers';
+import cloudbase from '@cloudbase/node-sdk';
+import type { IMySqlClient } from '@cloudbase/wx-cloud-client-sdk';
 
 import type { ClassroomState, GroupRecord, Measurements } from '@/lib/classroom-types';
 import {
@@ -9,9 +10,197 @@ import {
   type RoutePlan,
 } from '@/lib/route-design';
 
-export function database() {
-  if (!env.DB) throw new Error('课堂数据库暂不可用');
-  return env.DB;
+const SESSIONS = 'classroom_sessions';
+const GROUPS = 'classroom_groups';
+
+type SessionRow = {
+  code: string;
+  teacher_token_hash: string;
+  group_count: number;
+  scene: number;
+  answer_revealed: boolean;
+  engineering_revealed: boolean;
+  submissions_paused: boolean;
+  started_at: string;
+  expires_at: string;
+  updated_at: string;
+};
+
+type GroupRow = {
+  session_code: string;
+  group_number: number;
+  device_token_hash: string | null;
+  joined_at: string | null;
+  last_seen_at: string | null;
+  prediction: string | null;
+  measurements: Measurements | null;
+  conclusion: string | null;
+  route_type: string | null;
+  route_reason: string | null;
+  route_plan: RoutePlan | null;
+  status: GroupRecord['status'];
+};
+
+type PgResult<T> = { data: T | null; error: { message?: string } | null };
+
+let cloudbaseApp: ReturnType<typeof cloudbase.init> | null = null;
+type CloudBaseWithRdb = ReturnType<typeof cloudbase.init> & { rdb: IMySqlClient };
+
+function relationalDatabase() {
+  if (!cloudbaseApp) {
+    cloudbaseApp = cloudbase.init({
+      env: process.env.CLOUDBASE_ENV_ID || cloudbase.SYMBOL_DEFAULT_ENV,
+      accessKey: process.env.CLOUDBASE_APIKEY,
+    });
+  }
+  return (cloudbaseApp as CloudBaseWithRdb).rdb({ database: 'public' });
+}
+
+function dataOrThrow<T>(result: PgResult<T>, operation: string): T {
+  if (result.error) {
+    throw new Error(`${operation}失败：${result.error.message || '数据库请求失败'}`);
+  }
+  return result.data as T;
+}
+
+export async function sessionByCode(code: string) {
+  const result = (await relationalDatabase()
+    .from(SESSIONS)
+    .select('*')
+    .eq('code', code)
+    .maybeSingle()) as PgResult<SessionRow | null>;
+  return dataOrThrow(result, '读取课堂');
+}
+
+export async function groupByNumber(code: string, groupNumber: number) {
+  const result = (await relationalDatabase()
+    .from(GROUPS)
+    .select('*')
+    .eq('session_code', code)
+    .eq('group_number', groupNumber)
+    .maybeSingle()) as PgResult<GroupRow | null>;
+  return dataOrThrow(result, '读取小组');
+}
+
+export async function groupsForSession(code: string): Promise<GroupRow[]> {
+  const result = (await relationalDatabase()
+    .from(GROUPS)
+    .select('*')
+    .eq('session_code', code)
+    .order('group_number', { ascending: true })) as PgResult<GroupRow[]>;
+  return dataOrThrow(result, '读取小组列表') || [];
+}
+
+export async function deleteExpiredClassrooms(now: string) {
+  const result = (await relationalDatabase()
+    .from(SESSIONS)
+    .delete()
+    .lte('expires_at', now)) as PgResult<unknown>;
+  dataOrThrow(result, '清理过期课堂');
+}
+
+export async function createClassroomRecords({
+  code,
+  teacherTokenHash,
+  groupCount,
+  startedAt,
+  expiresAt,
+}: {
+  code: string;
+  teacherTokenHash: string;
+  groupCount: number;
+  startedAt: string;
+  expiresAt: string;
+}) {
+  const session: SessionRow = {
+    code,
+    teacher_token_hash: teacherTokenHash,
+    group_count: groupCount,
+    scene: 0,
+    answer_revealed: false,
+    engineering_revealed: false,
+    submissions_paused: false,
+    started_at: startedAt,
+    expires_at: expiresAt,
+    updated_at: startedAt,
+  };
+  const groups: GroupRow[] = Array.from({ length: groupCount }, (_, index) => ({
+    session_code: code,
+    group_number: index + 1,
+    device_token_hash: null,
+    joined_at: null,
+    last_seen_at: null,
+    prediction: null,
+    measurements: null,
+    conclusion: null,
+    route_type: null,
+    route_reason: null,
+    route_plan: null,
+    status: 'waiting',
+  }));
+
+  const sessionResult = (await relationalDatabase()
+    .from(SESSIONS)
+    .insert(session)) as PgResult<unknown>;
+  dataOrThrow(sessionResult, '创建课堂');
+  const groupResult = (await relationalDatabase().from(GROUPS).insert(groups)) as PgResult<unknown>;
+  if (groupResult.error) {
+    await relationalDatabase().from(SESSIONS).delete().eq('code', code);
+    dataOrThrow(groupResult, '创建小组');
+  }
+}
+
+export async function updateSessionRecord(code: string, updates: Partial<SessionRow>) {
+  const result = (await relationalDatabase()
+    .from(SESSIONS)
+    .update(updates)
+    .eq('code', code)) as PgResult<unknown>;
+  dataOrThrow(result, '更新课堂');
+}
+
+export async function updateGroupRecord(
+  code: string,
+  groupNumber: number,
+  updates: Partial<GroupRow>,
+) {
+  const result = (await relationalDatabase()
+    .from(GROUPS)
+    .update(updates)
+    .eq('session_code', code)
+    .eq('group_number', groupNumber)) as PgResult<unknown>;
+  dataOrThrow(result, '更新小组');
+}
+
+export async function updateAllGroups(code: string, updates: Partial<GroupRow>) {
+  const result = (await relationalDatabase()
+    .from(GROUPS)
+    .update(updates)
+    .eq('session_code', code)) as PgResult<unknown>;
+  dataOrThrow(result, '批量更新小组');
+}
+
+export async function claimGroup(code: string, groupNumber: number, deviceTokenHash: string) {
+  const now = new Date().toISOString();
+  const result = (await relationalDatabase()
+    .from(GROUPS)
+    .update({ device_token_hash: deviceTokenHash, joined_at: now, last_seen_at: now })
+    .eq('session_code', code)
+    .eq('group_number', groupNumber)
+    .is('device_token_hash', null)
+    .select('group_number')) as PgResult<Array<{ group_number: number }>>;
+  const updated = dataOrThrow(result, '认领小组') || [];
+  if (updated.length > 0) return true;
+  const group = await groupByNumber(code, groupNumber);
+  return group?.device_token_hash === deviceTokenHash;
+}
+
+export async function touchGroupByToken(code: string, tokenHash: string) {
+  const result = (await relationalDatabase()
+    .from(GROUPS)
+    .update({ last_seen_at: new Date().toISOString() })
+    .eq('session_code', code)
+    .eq('device_token_hash', tokenHash)) as PgResult<unknown>;
+  dataOrThrow(result, '更新在线状态');
 }
 
 export async function hashToken(token: string) {
@@ -30,109 +219,55 @@ export function bearer(request: Request) {
 export async function isTeacher(request: Request, code: string) {
   const token = bearer(request);
   if (!token) return false;
-  const row = await database()
-    .prepare('SELECT teacher_token_hash AS tokenHash FROM classroom_sessions WHERE code = ?')
-    .bind(code)
-    .first<{ tokenHash: string }>();
-  return Boolean(row && row.tokenHash === (await hashToken(token)));
+  const session = await sessionByCode(code);
+  return Boolean(session && session.teacher_token_hash === (await hashToken(token)));
 }
 
 export async function groupForToken(request: Request, code: string) {
   const token = bearer(request);
   if (!token) return null;
-  return database()
-    .prepare(
-      'SELECT group_number AS groupNumber FROM classroom_groups WHERE session_code = ? AND device_token_hash = ?',
-    )
-    .bind(code, await hashToken(token))
-    .first<{ groupNumber: number }>();
+  const tokenHash = await hashToken(token);
+  const result = (await relationalDatabase()
+    .from(GROUPS)
+    .select('group_number')
+    .eq('session_code', code)
+    .eq('device_token_hash', tokenHash)
+    .maybeSingle()) as PgResult<{ group_number: number } | null>;
+  const group = dataOrThrow(result, '验证小组身份');
+  return group ? { groupNumber: group.group_number } : null;
 }
 
-type SessionRow = {
-  code: string;
-  groupCount: number;
-  scene: number;
-  answerRevealed: number;
-  engineeringRevealed: number;
-  submissionsPaused: number;
-  startedAt: string;
-  expiresAt: string;
-  updatedAt: string;
-};
-
-type GroupRow = {
-  groupNumber: number;
-  deviceTokenHash: string | null;
-  lastSeenAt: string | null;
-  prediction: string | null;
-  measurementsJson: string | null;
-  conclusion: string | null;
-  routeType: string | null;
-  routeReason: string | null;
-  routePlanJson: string | null;
-  status: GroupRecord['status'];
-};
-
 export async function readClassroom(code: string): Promise<ClassroomState | null> {
-  const db = database();
-  const session = await db
-    .prepare(
-      `SELECT code, group_count AS groupCount, scene, answer_revealed AS answerRevealed,
-       engineering_revealed AS engineeringRevealed,
-       submissions_paused AS submissionsPaused, started_at AS startedAt,
-       expires_at AS expiresAt, updated_at AS updatedAt
-       FROM classroom_sessions WHERE code = ? AND expires_at > ?`,
-    )
-    .bind(code, new Date().toISOString())
-    .first<SessionRow>();
-  if (!session) return null;
-
-  const result = await db
-    .prepare(
-      `SELECT group_number AS groupNumber, device_token_hash AS deviceTokenHash,
-       last_seen_at AS lastSeenAt, prediction, measurements_json AS measurementsJson,
-       conclusion, route_type AS routeType, route_reason AS routeReason,
-       route_plan_json AS routePlanJson, status
-       FROM classroom_groups WHERE session_code = ? ORDER BY group_number`,
-    )
-    .bind(code)
-    .all<GroupRow>();
+  const session = await sessionByCode(code);
+  if (!session || session.expires_at <= new Date().toISOString()) return null;
+  const groups = await groupsForSession(code);
 
   function planFor(group: GroupRow): RoutePlan | null {
-    if (group.routePlanJson) {
-      try {
-        const parsed = JSON.parse(group.routePlanJson) as unknown;
-        if (isRoutePlan(parsed)) return normalizeRoutePlan(parsed);
-      } catch {
-        // Fall back to the legacy route fields below.
-      }
-    }
-    return group.routeType ? legacyRoutePlan(group.routeType, group.routeReason || '') : null;
+    if (isRoutePlan(group.route_plan)) return normalizeRoutePlan(group.route_plan);
+    return group.route_type ? legacyRoutePlan(group.route_type, group.route_reason || '') : null;
   }
 
   return {
     code: session.code,
-    groupCount: session.groupCount,
+    groupCount: session.group_count,
     scene: session.scene,
-    answerRevealed: Boolean(session.answerRevealed),
-    engineeringRevealed: Boolean(session.engineeringRevealed),
-    submissionsPaused: Boolean(session.submissionsPaused),
-    startedAt: session.startedAt,
-    expiresAt: session.expiresAt,
-    updatedAt: session.updatedAt,
-    groups: result.results.map((group) => {
+    answerRevealed: session.answer_revealed,
+    engineeringRevealed: session.engineering_revealed,
+    submissionsPaused: session.submissions_paused,
+    startedAt: session.started_at,
+    expiresAt: session.expires_at,
+    updatedAt: session.updated_at,
+    groups: groups.map((group) => {
       const routePlan = planFor(group);
       return {
-        groupNumber: group.groupNumber,
-        joined: Boolean(group.deviceTokenHash),
-        lastSeenAt: group.lastSeenAt,
+        groupNumber: group.group_number,
+        joined: Boolean(group.device_token_hash),
+        lastSeenAt: group.last_seen_at,
         prediction: group.prediction,
-        measurements: group.measurementsJson
-          ? (JSON.parse(group.measurementsJson) as Measurements)
-          : null,
+        measurements: group.measurements,
         conclusion: group.conclusion,
-        routeType: routePlan ? calculateRouteMetrics(routePlan).routeType : group.routeType,
-        routeReason: routePlan?.reason || group.routeReason,
+        routeType: routePlan ? calculateRouteMetrics(routePlan).routeType : group.route_type,
+        routeReason: routePlan?.reason || group.route_reason,
         routePlan,
         routeMetrics: routePlan ? calculateRouteMetrics(routePlan) : null,
         status: group.status,
