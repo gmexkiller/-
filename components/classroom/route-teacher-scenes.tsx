@@ -34,11 +34,13 @@ export function RouteDesignScene({
   teacherToken,
   offline,
   submitRoute,
+  updateState,
 }: {
   state: ClassroomState;
   teacherToken: string;
   offline: boolean;
   submitRoute: (groupNumber: number, plan: RoutePlan) => Promise<void>;
+  updateState: (patch: Partial<ClassroomState>) => Promise<void>;
 }) {
   const submitted = state.groups.filter((group) => group.routePlan).length;
   const [focusGroupNumber, setFocusGroupNumber] = useState<number | null>(null);
@@ -59,7 +61,7 @@ export function RouteDesignScene({
     await fetch(`/api/sessions/${state.code}/state`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${teacherToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ groupNumber, status }),
+      body: JSON.stringify({ groupNumber, status, task: 'route' }),
     });
   }
 
@@ -73,6 +75,7 @@ export function RouteDesignScene({
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="rounded-full bg-white px-4 py-2 text-sm font-black text-primary shadow-sm">{submitted}/{state.groupCount} 组已提交</span>
+          <Button variant="outline" disabled={!routes.length} onClick={() => void updateState({ scene: 7 })}><Columns2 className="size-4" /> 双方案比较</Button>
           <Button variant={overlay ? 'default' : 'outline'} onClick={() => setOverlay((value) => !value)} disabled={!routes.length}>
             <Layers3 className="size-4" /> {overlay ? '返回作品墙' : '全班叠加'}
           </Button>
@@ -184,7 +187,7 @@ export function RouteCompareScene({ state, updateState }: { state: ClassroomStat
 
   return (
     <div className="flex h-full flex-col overflow-hidden p-[clamp(1.25rem,2.4vw,2.35rem)]">
-      <div className="flex items-start justify-between gap-5"><div><ScenePill icon={Columns2}>工程 · 路线证据比较</ScenePill><h2 className="mt-3 text-[clamp(2rem,3.2vw,3.35rem)] font-black leading-tight">同样到达山顶，哪条路线更合理？</h2></div><div className="flex max-w-[48%] flex-wrap justify-end gap-2">{completed.map((group) => <button key={group.groupNumber} type="button" aria-pressed={activeSelected.includes(group.groupNumber)} onClick={() => toggleGroup(group.groupNumber)} className={`rounded-full border-2 px-3 py-2 text-sm font-black ${activeSelected.includes(group.groupNumber) ? 'border-transparent text-white' : 'border-slate-200 bg-white text-slate-600'}`} style={activeSelected.includes(group.groupNumber) ? { background: GROUP_ROUTE_COLORS[group.groupNumber - 1] } : undefined}>第{group.groupNumber}组</button>)}</div></div>
+      <div className="flex items-start justify-between gap-5"><div><ScenePill icon={Columns2}>板块 2 · 路线证据比较</ScenePill><h2 className="mt-3 text-[clamp(2rem,3.2vw,3.35rem)] font-black leading-tight">同样到达山顶，哪条路线更合理？</h2></div><div className="flex max-w-[58%] flex-wrap justify-end gap-2"><Button variant="outline" onClick={() => void updateState({ scene: 6 })}><Route className="size-4" /> 返回路线作品墙</Button>{completed.map((group) => <button key={group.groupNumber} type="button" aria-pressed={activeSelected.includes(group.groupNumber)} onClick={() => toggleGroup(group.groupNumber)} className={`rounded-full border-2 px-3 py-2 text-sm font-black ${activeSelected.includes(group.groupNumber) ? 'border-transparent text-white' : 'border-slate-200 bg-white text-slate-600'}`} style={activeSelected.includes(group.groupNumber) ? { background: GROUP_ROUTE_COLORS[group.groupNumber - 1] } : undefined}>第{group.groupNumber}组</button>)}</div></div>
 
       {compared.length ? (
         <div className="mt-4 grid min-h-0 flex-1 grid-cols-[1.1fr_0.9fr] gap-5">

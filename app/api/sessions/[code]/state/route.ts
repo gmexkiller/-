@@ -37,7 +37,7 @@ export async function PATCH(
 
   if (body.resetAll === true) {
     await updateSessionRecord(code, {
-      scene: 0,
+      scene: 4,
       answer_revealed: false,
       engineering_revealed: false,
       submissions_paused: false,
@@ -50,6 +50,8 @@ export async function PATCH(
       route_type: null,
       route_reason: null,
       route_plan: null,
+      measurement_status: 'waiting',
+      route_status: 'waiting',
       status: 'waiting',
     });
   } else if (typeof body.resetGroup === 'number') {
@@ -63,14 +65,15 @@ export async function PATCH(
       route_type: null,
       route_reason: null,
       route_plan: null,
+      measurement_status: 'waiting',
+      route_status: 'waiting',
       status: 'waiting',
     });
   } else if (typeof body.groupNumber === 'number' && typeof body.status === 'string') {
     const allowed = ['waiting', 'submitted', 'needs_changes', 'locked'];
     if (!allowed.includes(body.status)) return jsonError('小组状态无效');
-    await updateGroupRecord(code, body.groupNumber, {
-      status: body.status as GroupRecord['status'],
-    });
+    const task = body.task === 'route' ? 'route_status' : body.task === 'measurement' ? 'measurement_status' : null;
+    await updateGroupRecord(code, body.groupNumber, task ? { [task]: body.status as GroupRecord['status'] } : { status: body.status as GroupRecord['status'], measurement_status: body.status as GroupRecord['measurementStatus'], route_status: body.status as GroupRecord['routeStatus'] });
   } else {
     const updates: {
       scene?: number;

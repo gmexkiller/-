@@ -8,7 +8,6 @@ import {
   FlaskConical,
   LoaderCircle,
   LockKeyhole,
-  Mountain,
   Radio,
   RefreshCcw,
   Send,
@@ -31,16 +30,13 @@ import {
 } from '@/lib/classroom-types';
 
 const SCENE_HELP = [
-  '项目会议即将开始',
-  '选择你们的搬运方案',
-  '观察斜面并提出猜想',
-  '检查实验装置与分工',
-  '录入三次实验数据',
-  '用数据说出小组发现',
-  '提交上山路线方案',
-  '比较各组路线',
-  '寻找生活中的斜面',
+  '全班数据汇总 · 录入三次拉力',
+  '上山路线设计 · 提交路线作品',
 ];
+
+function panelIndex(scene: number) {
+  return scene >= 6 ? 1 : 0;
+}
 
 type SavedIdentity = { groupNumber: number; deviceToken: string };
 
@@ -159,15 +155,15 @@ export function StudentApp({ code }: { code: string }) {
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-xl items-center gap-3">
           <span className="grid size-10 place-items-center rounded-xl bg-primary text-white"><FlaskConical className="size-5" /></span>
-          <div><p className="text-sm font-black text-primary">第 {identity.groupNumber} 组 · 课堂 {code}</p><p className="text-xs font-bold text-slate-500">{SCENE_HELP[state.scene]}</p></div>
-          <span className="ml-auto rounded-full bg-sky-50 px-3 py-1.5 text-xs font-black text-primary">{state.scene + 1}/9</span>
+          <div><p className="text-sm font-black text-primary">第 {identity.groupNumber} 组 · 课堂 {code}</p><p className="text-xs font-bold text-slate-500">{SCENE_HELP[panelIndex(state.scene)]}</p></div>
+          <span className="ml-auto rounded-full bg-sky-50 px-3 py-1.5 text-xs font-black text-primary">{panelIndex(state.scene) + 1}/2</span>
         </div>
       </header>
       {offline && <div className="flex items-center justify-center gap-2 bg-orange-100 p-2 text-xs font-black text-orange-800"><WifiOff className="size-4" />网络中断，暂时无法提交</div>}
       {state.submissionsPaused && <div className="flex items-center justify-center gap-2 bg-slate-800 p-2 text-xs font-black text-white"><LockKeyhole className="size-4" />教师已暂停提交</div>}
-      {group?.status === 'locked' && (state.scene <= 5 || Boolean(group.routeType)) && <div className="flex items-center justify-center gap-2 bg-emerald-100 p-2 text-xs font-black text-emerald-800"><CheckCircle2 className="size-4" />教师已确认并锁定本组当前提交</div>}
-      {group?.status === 'needs_changes' && <div className="flex items-center justify-center gap-2 bg-red-100 p-2 text-xs font-black text-red-800"><CircleAlert className="size-4" />教师请本组检查当前内容并重新提交</div>}
-      {group?.status === 'submitted' && <div className="flex items-center justify-center gap-2 bg-sky-100 p-2 text-xs font-black text-primary"><Send className="size-4" />当前内容已提交，等待教师反馈</div>}
+      {((panelIndex(state.scene) === 0 ? group?.measurementStatus : group?.routeStatus) === 'locked') && <div className="flex items-center justify-center gap-2 bg-emerald-100 p-2 text-xs font-black text-emerald-800"><CheckCircle2 className="size-4" />教师已确认并锁定本板块提交</div>}
+      {((panelIndex(state.scene) === 0 ? group?.measurementStatus : group?.routeStatus) === 'needs_changes') && <div className="flex items-center justify-center gap-2 bg-red-100 p-2 text-xs font-black text-red-800"><CircleAlert className="size-4" />教师请本组检查当前内容并重新提交</div>}
+      {((panelIndex(state.scene) === 0 ? group?.measurementStatus : group?.routeStatus) === 'submitted') && <div className="flex items-center justify-center gap-2 bg-sky-100 p-2 text-xs font-black text-primary"><Send className="size-4" />当前板块已提交，等待教师反馈</div>}
       <section className="mx-auto max-w-xl px-4 py-6">
         <StudentScene scene={state.scene} group={group} disabled={offline || state.submissionsPaused} submit={submit} answerRevealed={state.answerRevealed} />
       </section>
@@ -176,13 +172,8 @@ export function StudentApp({ code }: { code: string }) {
 }
 
 function StudentScene({ scene, group, disabled, submit, answerRevealed }: { scene: number; group: ClassroomState['groups'][number] | undefined; disabled: boolean; submit: (payload: Record<string, unknown>) => Promise<void>; answerRevealed: boolean }) {
-  if (scene === 1) return <PredictionForm value={group?.prediction} disabled={disabled} submit={submit} />;
-  if (scene === 4 || scene === 5) return <MeasurementForm initial={group?.measurements} conclusion={group?.conclusion} disabled={disabled || group?.status === 'locked'} submit={submit} answerRevealed={answerRevealed} />;
-  if (scene === 6 || scene === 7) return <RouteForm initial={group?.routePlan} groupNumber={group?.groupNumber} disabled={disabled || (group?.status === 'locked' && Boolean(group.routePlan))} submit={submit} />;
-  if (scene === 8) return <WaitingCard icon={CheckCircle2} title="项目会议完成" text="你们用实验数据找到了斜面的规律，还把规律用到了上山路线设计中。" tone="green" />;
-  if (scene === 2) return <WaitingCard icon={Radio} title="先观察，再提出猜想" text="比较不同倾斜程度的斜面。怎样设计公平实验，才能知道哪一种更省力？" />;
-  if (scene === 3) return <WaitingCard icon={FlaskConical} title="准备实验" text="分工搭建、拉动、记录和计算。记得保持货物、高度和接触面相同，沿斜面缓慢匀速拉动。" />;
-  return <WaitingCard icon={scene === 0 ? Users : Mountain} title={SCENE_HELP[scene]} text="请观察教师大屏，和项目组伙伴一起讨论。需要操作时，这里会自动出现任务。" tone={scene >= 6 ? 'green' : 'blue'} />;
+  if (scene >= 6) return <RouteForm initial={group?.routePlan} groupNumber={group?.groupNumber} disabled={disabled || group?.routeStatus === 'locked'} submit={submit} />;
+  return <MeasurementForm initial={group?.measurements} conclusion={group?.conclusion} disabled={disabled || group?.measurementStatus === 'locked'} submit={submit} answerRevealed={answerRevealed} />;
 }
 
 function PredictionForm({ value, disabled, submit }: { value?: string | null; disabled: boolean; submit: (payload: Record<string, unknown>) => Promise<void> }) {
@@ -199,13 +190,13 @@ function MeasurementForm({ initial, conclusion, disabled, submit, answerRevealed
   const [finding, setFinding] = useState(conclusion || '');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const valid = useMemo(() => validateMeasurements(measurements) && finding.trim().length >= 4, [finding, measurements]);
-  async function send() { setLoading(true); setMessage(''); try { await submit({ kind: 'measurements', measurements, conclusion: finding }); setMessage('实验数据已提交！'); } catch (caught) { setMessage(caught instanceof Error ? caught.message : '提交失败'); } finally { setLoading(false); } }
-  return <TaskCard label="任务 2" title="记录三次拉力" intro="单位是 N。每种情况都缓慢匀速拉动，重复三次，再看平均值。"><div className="space-y-4">{CONDITIONS.map(({ key, label }) => <div key={key} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-center justify-between"><p className="font-black">{label}</p><span className="text-sm font-black text-primary">平均 {average(measurements[key]) || '—'} N</span></div><div className="mt-3 grid grid-cols-3 gap-2">{measurements[key].map((value, index) => <label key={index} className="text-center text-xs font-bold text-slate-500">第{index + 1}次<Input type="number" inputMode="decimal" min="0.1" max="20" step="0.1" disabled={disabled} value={value || ''} onChange={(event) => { const next = { ...measurements, [key]: [...measurements[key]] } as Measurements; next[key][index] = Number(event.target.value); setMeasurements(next); }} className="mt-1 h-11 text-center text-base font-black" /></label>)}</div></div>)}</div><label className="mt-6 block text-sm font-black text-slate-700">我们根据数据发现<Textarea disabled={disabled} value={finding} onChange={(event) => setFinding(event.target.value)} placeholder="斜面越……，需要的拉力越……" className="mt-2 min-h-24" /></label>{answerRevealed && <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-800">全班结论：斜面越平缓，需要的拉力越小，同时移动距离更长。</div>}<SubmitButton disabled={disabled || !valid || loading} onClick={() => void send()} loading={loading} />{message && <Feedback text={message} good={message.includes('已提交')} />}</TaskCard>;
+  const valid = useMemo(() => validateMeasurements(measurements), [measurements]);
+  async function send() { setLoading(true); setMessage(''); try { await submit({ kind: 'measurements', measurements, conclusion: finding.trim() || undefined }); setMessage('实验数据已提交！'); } catch (caught) { setMessage(caught instanceof Error ? caught.message : '提交失败'); } finally { setLoading(false); } }
+  return <TaskCard label="板块 1" title="记录三次拉力" intro="单位是 N。每种情况都缓慢匀速拉动，重复三次，再看平均值。小组发现可以课上口头说明，也可以写在下面。"><div className="space-y-4">{CONDITIONS.map(({ key, label }) => <div key={key} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-center justify-between"><p className="font-black">{label}</p><span className="text-sm font-black text-primary">平均 {average(measurements[key]) || '—'} N</span></div><div className="mt-3 grid grid-cols-3 gap-2">{measurements[key].map((value, index) => <label key={index} className="text-center text-xs font-bold text-slate-500">第{index + 1}次<Input type="number" inputMode="decimal" min="0.1" max="20" step="0.1" disabled={disabled} value={value || ''} onChange={(event) => { const next = { ...measurements, [key]: [...measurements[key]] } as Measurements; next[key][index] = Number(event.target.value); setMeasurements(next); }} className="mt-1 h-11 text-center text-base font-black" /></label>)}</div></div>)}</div><label className="mt-6 block text-sm font-black text-slate-700">小组发现（选填）<Textarea disabled={disabled} value={finding} onChange={(event) => setFinding(event.target.value)} placeholder="例如：斜面越平缓，需要的拉力越小。" className="mt-2 min-h-24" /></label>{answerRevealed && <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-800">全班结论：斜面越平缓，需要的拉力越小，同时移动距离更长。</div>}<SubmitButton disabled={disabled || !valid || loading} onClick={() => void send()} loading={loading} />{message && <Feedback text={message} good={message.includes('已提交')} />}</TaskCard>;
 }
 
 function RouteForm({ initial, groupNumber, disabled, submit }: { initial?: RoutePlan | null; groupNumber?: number; disabled: boolean; submit: (payload: Record<string, unknown>) => Promise<void> }) {
-  return <TaskCard label="任务 3" title="设计上山路线" intro="拖动三个路线节点，比较路程与坡度，测试后提交你们的路线作品。"><RoutePlanner initial={initial} groupNumber={groupNumber} disabled={disabled} onSubmit={(routePlan) => submit({ kind: 'route', routePlan })} /></TaskCard>;
+  return <TaskCard label="板块 2" title="设计上山路线" intro="拖动三个路线节点，比较路程与坡度，测试后提交你们的路线作品。"><RoutePlanner initial={initial} groupNumber={groupNumber} disabled={disabled} onSubmit={(routePlan) => submit({ kind: 'route', routePlan })} /></TaskCard>;
 }
 
 function TaskCard({ label, title, intro, children }: { label: string; title: string; intro: string; children: React.ReactNode }) {

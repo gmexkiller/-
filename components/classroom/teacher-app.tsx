@@ -5,8 +5,6 @@ import {
   ArrowLeft,
   BarChart3,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   CircleAlert,
   Clock3,
   Download,
@@ -43,16 +41,17 @@ import {
 import { calculateRouteMetrics, type RoutePlan } from '@/lib/route-design';
 
 const SCENES = [
-  '项目会议',
-  '方案预测',
-  '提出问题',
-  '实验设计',
-  '测量汇总',
-  '证据结论',
-  '路线设计',
-  '工程比较',
-  '生活拓展',
+  '全班数据汇总',
+  '上山路线设计',
 ];
+
+function panelIndex(scene: number) {
+  return scene >= 6 ? 1 : 0;
+}
+
+function panelScene(index: number) {
+  return index === 1 ? 6 : 4;
+}
 
 const PREDICTION_COLORS: Record<string, string> = {
   直接搬: '#64748b',
@@ -241,7 +240,7 @@ export function TeacherApp({ code }: { code: string }) {
     if (offline) {
       const cleared = {
         ...state,
-        scene: 0,
+        scene: 4,
         answerRevealed: false,
         engineeringRevealed: false,
         submissionsPaused: false,
@@ -325,7 +324,7 @@ export function TeacherApp({ code }: { code: string }) {
         </a>
         <div className="min-w-0">
           <p className="truncate text-sm font-black text-primary">3.2 斜面 · 胡拉拉搬家公司</p>
-          <p className="truncate text-xs font-bold text-slate-500">{SCENES[state.scene]} · 第 {state.scene + 1}/9 环节</p>
+          <p className="truncate text-xs font-bold text-slate-500">{SCENES[panelIndex(state.scene)]} · 第 {panelIndex(state.scene) + 1}/2 板块</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <span className={`hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black md:flex ${offline ? 'bg-orange-100 text-orange-700' : 'bg-emerald-100 text-emerald-700'}`}>
@@ -358,7 +357,7 @@ export function TeacherApp({ code }: { code: string }) {
       <div className="flex min-h-0 flex-1 flex-col xl:grid xl:grid-cols-[minmax(0,1fr)_280px]">
         <section className="relative min-h-[calc(100vh-170px)] overflow-hidden p-3 md:p-5">
           <div className="mx-auto flex aspect-video max-h-[calc(100vh-190px)] min-h-[620px] w-full max-w-[1320px] flex-col overflow-hidden rounded-[1.75rem] border border-white bg-white shadow-[0_25px_80px_rgba(27,73,102,0.12)]">
-            <SceneContent state={state} joinUrl={joinUrl} teacherToken={teacherToken} offline={offline} updateState={updateState} submitRoute={submitRouteForGroup} />
+            <SceneContent state={state} teacherToken={teacherToken} offline={offline} updateState={updateState} submitRoute={submitRouteForGroup} />
           </div>
         </section>
 
@@ -407,24 +406,20 @@ export function TeacherApp({ code }: { code: string }) {
       </div>
 
       <footer className="sticky bottom-0 z-20 flex items-center gap-3 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,0.06)] md:px-6">
-        <Button variant="outline" size="lg" disabled={state.scene === 0} onClick={() => void updateState({ scene: state.scene - 1 })}>
-          <ChevronLeft className="size-5" /> 上一环节
-        </Button>
-        <div className="hidden flex-1 items-center justify-center gap-2 md:flex">
+        <span className="hidden text-sm font-black text-slate-500 md:block">课堂板块</span>
+        <div className="grid flex-1 grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
           {SCENES.map((scene, index) => (
             <button
               key={scene}
               type="button"
-              aria-label={`前往${scene}`}
-              onClick={() => void updateState({ scene: index })}
-              className={`h-2.5 rounded-full transition-all ${index === state.scene ? 'w-10 bg-orange-500' : index < state.scene ? 'w-5 bg-primary' : 'w-5 bg-slate-200'}`}
-            />
+              aria-pressed={panelIndex(state.scene) === index}
+              onClick={() => void updateState({ scene: panelScene(index) })}
+              className={`rounded-xl px-3 py-2.5 text-sm font-black transition md:text-base ${panelIndex(state.scene) === index ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+            >
+              {index + 1}. {scene}
+            </button>
           ))}
         </div>
-        <span className="flex-1 text-center text-sm font-black text-slate-500 md:hidden">{state.scene + 1} / 9</span>
-        <Button size="lg" disabled={state.scene === 8} onClick={() => void updateState({ scene: state.scene + 1 })} className="bg-orange-500 text-white hover:bg-orange-600">
-          下一环节 <ChevronRight className="size-5" />
-        </Button>
       </footer>
     </main>
   );
@@ -445,39 +440,22 @@ function CenteredNotice({ title, text }: { title: string; text: string }) {
 
 function SceneContent({
   state,
-  joinUrl,
   teacherToken,
   offline,
   updateState,
   submitRoute,
 }: {
   state: ClassroomState;
-  joinUrl: string;
   teacherToken: string;
   offline: boolean;
   updateState: (patch: Partial<ClassroomState>) => Promise<void>;
   submitRoute: (groupNumber: number, plan: RoutePlan) => Promise<void>;
 }) {
-  switch (state.scene) {
-    case 0:
-      return <OpeningScene state={state} joinUrl={joinUrl} />;
-    case 1:
-      return <PredictionScene state={state} />;
-    case 2:
-      return <QuestionScene />;
-    case 3:
-      return <ExperimentDesignScene />;
-    case 4:
-      return <DataScene state={state} teacherToken={teacherToken} />;
-    case 5:
-      return <ConclusionScene state={state} updateState={updateState} />;
-    case 6:
-      return <RouteDesignScene state={state} teacherToken={teacherToken} offline={offline} submitRoute={submitRoute} />;
-    case 7:
-      return <RouteCompareScene state={state} updateState={updateState} />;
-    default:
-      return <TransferScene />;
+  if (state.scene >= 6) {
+    if (state.scene === 7) return <RouteCompareScene state={state} updateState={updateState} />;
+    return <RouteDesignScene state={state} teacherToken={teacherToken} offline={offline} submitRoute={submitRoute} updateState={updateState} />;
   }
+  return <DataScene state={state} teacherToken={teacherToken} updateState={updateState} />;
 }
 
 function SceneLabel({ icon: Icon, children, tone = 'blue' }: { icon: typeof FlaskConical; children: React.ReactNode; tone?: 'blue' | 'orange' | 'green' }) {
@@ -559,21 +537,21 @@ function ExperimentDesignScene() {
   );
 }
 
-function DataScene({ state, teacherToken }: { state: ClassroomState; teacherToken: string }) {
+function DataScene({ state, teacherToken, updateState }: { state: ClassroomState; teacherToken: string; updateState: (patch: Partial<ClassroomState>) => Promise<void> }) {
   const data = classAverages(state);
   const completed = state.groups.filter((group) => group.measurements).length;
   async function markGroup(groupNumber: number, status: 'locked' | 'needs_changes') {
     await fetch(`/api/sessions/${state.code}/state`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${teacherToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ groupNumber, status }),
+      body: JSON.stringify({ groupNumber, status, task: 'measurement' }),
     });
   }
   return (
     <div className="flex h-full flex-col p-[clamp(1.5rem,3vw,3rem)]">
-      <div className="flex items-center justify-between"><SceneLabel icon={BarChart3}>研讨 · 全班数据汇总</SceneLabel><TeacherManualEntry state={state} teacherToken={teacherToken} /></div>
+      <div className="flex items-center justify-between gap-4"><div><SceneLabel icon={BarChart3}>板块 1 · 全班数据汇总</SceneLabel><p className="mt-2 text-sm font-bold text-slate-500">先看全班平均拉力，再请小组用证据解释差异。</p></div><div className="flex items-center gap-2"><Button variant={state.answerRevealed ? 'default' : 'outline'} onClick={() => void updateState({ answerRevealed: !state.answerRevealed })}>{state.answerRevealed ? <RotateCcw className="size-4" /> : <LockKeyhole className="size-4" />}{state.answerRevealed ? '隐藏科学结论' : '揭示科学结论'}</Button><TeacherManualEntry state={state} teacherToken={teacherToken} /></div></div>
       <div className="mt-4 grid flex-1 grid-cols-[1fr_1.05fr] gap-6 overflow-hidden">
-        <div className="overflow-auto rounded-[1.5rem] border border-slate-200"><table className="w-full border-collapse text-center"><thead className="sticky top-0 bg-primary text-white"><tr><th className="p-3 text-left">项目组</th>{CONDITIONS.map((item) => <th key={item.key} className="p-3">{item.shortLabel}<span className="block text-xs text-sky-200">平均拉力/N</span></th>)}<th className="p-3">反馈</th></tr></thead><tbody>{state.groups.map((group) => <tr key={group.groupNumber} className="border-b border-slate-100"><th className="p-3 text-left font-black">第{group.groupNumber}组</th>{CONDITIONS.map(({ key }) => <td key={key} className="p-3 text-lg font-black tabular-nums">{group.measurements ? average(group.measurements[key]) : <span className="text-sm text-slate-300">等待</span>}</td>)}<td className="p-2"><div className="flex justify-center gap-1"><Button size="xs" variant={group.status === 'locked' ? 'default' : 'outline'} disabled={!group.measurements} onClick={() => void markGroup(group.groupNumber, 'locked')}>锁定</Button><Button size="xs" variant={group.status === 'needs_changes' ? 'destructive' : 'outline'} disabled={!group.measurements} onClick={() => void markGroup(group.groupNumber, 'needs_changes')}>修改</Button></div></td></tr>)}</tbody></table></div>
+        <div className="overflow-auto rounded-[1.5rem] border border-slate-200"><table className="w-full border-collapse text-center"><thead className="sticky top-0 bg-primary text-white"><tr><th className="p-3 text-left">项目组</th>{CONDITIONS.map((item) => <th key={item.key} className="p-3">{item.shortLabel}<span className="block text-xs text-sky-200">平均拉力/N</span></th>)}<th className="p-3">反馈</th></tr></thead><tbody>{state.groups.map((group) => <tr key={group.groupNumber} className="border-b border-slate-100"><th className="p-3 text-left font-black">第{group.groupNumber}组</th>{CONDITIONS.map(({ key }) => <td key={key} className="p-3 text-lg font-black tabular-nums">{group.measurements ? average(group.measurements[key]) : <span className="text-sm text-slate-300">等待</span>}</td>)}<td className="p-2"><div className="flex justify-center gap-1"><Button size="xs" variant={group.measurementStatus === 'locked' ? 'default' : 'outline'} disabled={!group.measurements} onClick={() => void markGroup(group.groupNumber, 'locked')}>锁定</Button><Button size="xs" variant={group.measurementStatus === 'needs_changes' ? 'destructive' : 'outline'} disabled={!group.measurements} onClick={() => void markGroup(group.groupNumber, 'needs_changes')}>修改</Button></div></td></tr>)}</tbody></table></div>
         <div className="flex flex-col rounded-[1.5rem] bg-slate-50 p-5"><div className="flex items-center justify-between"><div><p className="text-lg font-black">全班平均拉力</p><p className="text-sm font-bold text-slate-500">数据随小组提交实时更新</p></div><span className="rounded-full bg-emerald-100 px-4 py-2 text-sm font-black text-emerald-700">{completed}/{state.groupCount} 组完成</span></div><ChartContainer config={{ value: { label: '平均拉力', color: '#1769aa' } }} className="mt-3 min-h-0 flex-1"><BarChart data={data} accessibilityLayer><CartesianGrid vertical={false} /><XAxis dataKey="name" tickLine={false} axisLine={false} /><YAxis domain={[0, 'auto']} unit="N" /><ChartTooltip content={<ChartTooltipContent />} /><Bar dataKey="value" radius={[12, 12, 0, 0]}>{data.map((item, index) => <Cell key={item.name} fill={['#64748b', '#f58a2c', '#3b82b6', '#1f9d71'][index]} />)}</Bar></BarChart></ChartContainer></div>
       </div>
     </div>

@@ -7,6 +7,7 @@ export const CONDITIONS = [
 
 export type ConditionKey = (typeof CONDITIONS)[number]['key'];
 export type Measurements = Record<ConditionKey, [number, number, number]>;
+export type SubmissionStatus = 'waiting' | 'submitted' | 'needs_changes' | 'locked';
 
 export type GroupRecord = {
   groupNumber: number;
@@ -19,7 +20,9 @@ export type GroupRecord = {
   routeReason: string | null;
   routePlan: RoutePlan | null;
   routeMetrics: RouteMetrics | null;
-  status: 'waiting' | 'submitted' | 'needs_changes' | 'locked';
+  status: SubmissionStatus;
+  measurementStatus: SubmissionStatus;
+  routeStatus: SubmissionStatus;
 };
 
 export type ClassroomState = {

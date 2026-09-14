@@ -51,12 +51,11 @@ export async function POST(
     if (!validateMeasurements(body.measurements)) {
       return jsonError('每种情况需要填写 3 次 0–20 N 的有效拉力');
     }
-    if (typeof body.conclusion !== 'string' || body.conclusion.trim().length < 4) {
-      return jsonError('请写下小组根据数据形成的发现');
-    }
+    const conclusion = typeof body.conclusion === 'string' ? body.conclusion.trim().slice(0, 120) : '';
     await updateGroupRecord(code, claimedGroup, {
       measurements: body.measurements,
-      conclusion: body.conclusion.trim().slice(0, 120),
+      conclusion: conclusion || null,
+      measurement_status: 'submitted',
       status: 'submitted',
       last_seen_at: now,
     });
@@ -80,6 +79,7 @@ export async function POST(
       route_type: metrics.routeType,
       route_reason: routePlan.reason,
       route_plan: routePlan,
+      route_status: 'submitted',
       status: 'submitted',
       last_seen_at: now,
     });

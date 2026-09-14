@@ -42,7 +42,7 @@ export default function Home() {
               </span>
             </h1>
             <p className="mt-8 max-w-xl text-lg font-medium leading-8 text-slate-600 md:text-xl">
-              创建课堂，让 4–8 个项目组扫码加入。预测、测量、比较，再把科学规律用到真实的上山路线中。
+              创建课堂，让 4–8 个项目组扫码加入。汇总全班拉力数据，再把科学规律用到真实的上山路线中。
             </p>
 
             <div className="mt-10 flex flex-wrap gap-4">
@@ -70,9 +70,9 @@ export default function Home() {
             </div>
 
             <div className="mt-12 flex flex-wrap gap-x-8 gap-y-3 text-sm font-bold text-slate-600">
-              <span>✓ 教师大屏控制</span>
+              <span>✓ 全班平均拉力</span>
+              <span>✓ 路线作品墙</span>
               <span>✓ 小组实时提交</span>
-              <span>✓ 断网也能继续授课</span>
             </div>
           </div>
         </div>

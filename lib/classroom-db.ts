@@ -39,6 +39,8 @@ type GroupRow = {
   route_reason: string | null;
   route_plan: RoutePlan | null;
   status: GroupRecord['status'];
+  measurement_status: GroupRecord['measurementStatus'];
+  route_status: GroupRecord['routeStatus'];
 };
 
 type PgResult<T> = { data: T | null; error: { message?: string } | null };
@@ -116,7 +118,7 @@ export async function createClassroomRecords({
     code,
     teacher_token_hash: teacherTokenHash,
     group_count: groupCount,
-    scene: 0,
+    scene: 4,
     answer_revealed: false,
     engineering_revealed: false,
     submissions_paused: false,
@@ -137,6 +139,8 @@ export async function createClassroomRecords({
     route_reason: null,
     route_plan: null,
     status: 'waiting',
+    measurement_status: 'waiting',
+    route_status: 'waiting',
   }));
 
   const sessionResult = (await relationalDatabase()
@@ -271,6 +275,8 @@ export async function readClassroom(code: string): Promise<ClassroomState | null
         routePlan,
         routeMetrics: routePlan ? calculateRouteMetrics(routePlan) : null,
         status: group.status,
+        measurementStatus: group.measurement_status || (group.measurements ? group.status : 'waiting'),
+        routeStatus: group.route_status || (routePlan ? group.status : 'waiting'),
       };
     }),
   };

@@ -87,9 +87,9 @@ export function NewClassroom() {
           <a href="/" className="mb-8 inline-flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-primary">
             <ArrowLeft className="size-4" /> 返回首页
           </a>
-          <p className="text-sm font-black tracking-[0.2em] text-primary">课前准备 · 约 10 秒</p>
-          <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-950 md:text-5xl">创建项目会议</h1>
-          <p className="mt-4 text-lg leading-8 text-slate-600">选择今天的项目组数量。创建后，大屏会生成课堂码和扫码入口。</p>
+          <p className="text-sm font-black tracking-[0.2em] text-primary">两个互动板块 · 约 10 秒</p>
+          <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-950 md:text-5xl">创建斜面互动课堂</h1>
+          <p className="mt-4 text-lg leading-8 text-slate-600">选择项目组数量。创建后直接进入全班数据汇总，随后切换到上山路线设计。</p>
 
           <div className="mt-10">
             <div className="mb-4 flex items-center gap-2 text-base font-black text-slate-800">
@@ -116,7 +116,7 @@ export function NewClassroom() {
           </div>
 
           <div className="mt-9 rounded-2xl bg-sky-50 p-5 text-sm leading-7 text-slate-650">
-            每组只需一台手机或平板。学生不需要注册，选择组号后即可提交预测、实验数据和路线方案。
+            每组只需一台手机或平板。学生不需要注册，选择组号后即可提交实验数据和路线方案。
           </div>
           {error && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>}
           <Button
