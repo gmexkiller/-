@@ -1,3 +1,11 @@
+import {
+  calculateMountainMetrics,
+  normalizeMountainRoad,
+  projectMountainRoad,
+  validateMountainRoad,
+  type MountainRoad,
+} from '@/lib/mountain-route';
+
 export const ROUTE_STRATEGIES = ['省力优先', '路程优先', '综合平衡'] as const;
 export const ROUTE_EVIDENCE = ['坡度更缓', '路程更短', '转弯适中', '行驶更稳定'] as const;
 
@@ -7,6 +15,7 @@ export type RouteType = '直上路线' | '折线路线' | '盘绕路线';
 
 export type RoutePlan = {
   waypointXs: [number, number, number];
+  mountain?: MountainRoad;
   strategy: RouteStrategy;
   evidenceTags: RouteEvidence[];
   reason: string;
@@ -19,6 +28,8 @@ export type RouteMetrics = {
   steepnessLabel: '较陡' | '中等' | '较缓';
   turnCount: number;
   routeType: RouteType;
+  sharpTurns?: number;
+  steepestSegment?: number;
 };
 
 export const ROUTE_X_MIN = 0.12;
@@ -44,7 +55,8 @@ export function routePoints(plan: Pick<RoutePlan, 'waypointXs'>) {
   ];
 }
 
-export function calculateRouteMetrics(plan: Pick<RoutePlan, 'waypointXs'>): RouteMetrics {
+export function calculateRouteMetrics(plan: Pick<RoutePlan, 'waypointXs' | 'mountain'>): RouteMetrics {
+  if ('mountain' in plan && plan.mountain) return calculateMountainMetrics(plan.mountain);
   const points = routePoints(plan);
   const segmentLengths = points.slice(1).map((point, index) => {
     const previous = points[index];
@@ -78,7 +90,7 @@ export function isRoutePlan(value: unknown): value is RoutePlan {
   const plan = value as Record<string, unknown>;
   const waypointXs = plan.waypointXs;
   const evidenceTags = plan.evidenceTags;
-  return (
+  const baseValid = (
     Array.isArray(waypointXs) &&
     waypointXs.length === 3 &&
     waypointXs.every(
@@ -101,11 +113,15 @@ export function isRoutePlan(value: unknown): value is RoutePlan {
     plan.reason.trim().length >= 4 &&
     plan.reason.trim().length <= 120
   );
+  if (!baseValid) return false;
+  return plan.mountain === undefined || validateMountainRoad(plan.mountain, true) === null;
 }
 
 export function normalizeRoutePlan(plan: RoutePlan): RoutePlan {
+  const mountain = plan.mountain ? normalizeMountainRoad(plan.mountain) : undefined;
   return {
-    waypointXs: plan.waypointXs.map(clampRouteX) as [number, number, number],
+    waypointXs: mountain ? projectMountainRoad(mountain) : plan.waypointXs.map(clampRouteX) as [number, number, number],
+    ...(mountain ? { mountain } : {}),
     strategy: plan.strategy,
     evidenceTags: [...new Set(plan.evidenceTags)] as RouteEvidence[],
     reason: plan.reason.trim().slice(0, 120),

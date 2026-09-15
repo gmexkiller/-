@@ -19,11 +19,17 @@ import {
   X,
 } from 'lucide-react';
 
-import { GROUP_ROUTE_COLORS, RouteMap, RouteOverlayMap } from '@/components/classroom/route-map';
+import {
+  MountainRoadLab,
+  MountainRouteThumbnail,
+  type MountainCameraView,
+} from '@/components/classroom/mountain-road-lab';
+import { GROUP_ROUTE_COLORS, RouteOverlayMap } from '@/components/classroom/route-map';
 import { RoutePlanner } from '@/components/classroom/route-planner';
 import { Button } from '@/components/ui/button';
 import type { ClassroomState, GroupRecord } from '@/lib/classroom-types';
 import type { RoutePlan } from '@/lib/route-design';
+import { legacyMountainRoad } from '@/lib/mountain-route';
 
 function ScenePill({ icon: Icon, children }: { icon: typeof Mountain; children: React.ReactNode }) {
   return <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-4 py-2 text-sm font-black text-emerald-700"><Icon className="size-4" />{children}</div>;
@@ -119,7 +125,7 @@ export function RouteDesignScene({
                 </div>
                 {group.routePlan ? (
                   <>
-                    <RouteMap plan={group.routePlan} color={color} compact className={`mt-2 ${state.groupCount <= 4 ? 'h-[230px]' : 'h-[92px]'}`} />
+                    <MountainRouteThumbnail road={group.routePlan.mountain || legacyMountainRoad(group.routePlan.waypointXs)} color={color} className={`mt-2 w-full ${state.groupCount <= 4 ? 'h-[230px]' : 'h-[92px]'}`} />
                     <div className="mt-2 flex items-center justify-between gap-2"><p className="font-black text-slate-800">{group.routeMetrics?.routeType}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">坡度{group.routeMetrics?.steepnessLabel}</span></div>
                     <p className="mt-1 line-clamp-1 text-xs font-bold text-slate-500">{group.routePlan.strategy} · {group.routePlan.reason}</p>
                   </>
@@ -137,7 +143,7 @@ export function RouteDesignScene({
           <section role="dialog" aria-modal="true" aria-label={`第${focusGroup.groupNumber}组路线焦点讲评`} className="grid max-h-full w-full max-w-5xl grid-cols-[1.15fr_0.85fr] gap-6 overflow-auto rounded-[2rem] bg-white p-6 shadow-2xl">
             <div>
               <div className="flex items-center justify-between"><span className="rounded-full px-4 py-2 font-black text-white" style={{ background: GROUP_ROUTE_COLORS[focusGroup.groupNumber - 1] }}>第{focusGroup.groupNumber}组路线作品</span><Button variant="ghost" size="icon" aria-label="关闭焦点讲评" onClick={() => setFocusGroupNumber(null)}><X className="size-5" /></Button></div>
-              <RouteMap plan={focusGroup.routePlan} color={GROUP_ROUTE_COLORS[focusGroup.groupNumber - 1]} groupNumber={focusGroup.groupNumber} animateKey={animateKey} className="mt-4" />
+              <MountainRoadLab plan={focusGroup.routePlan} color={GROUP_ROUTE_COLORS[focusGroup.groupNumber - 1]} groupNumber={focusGroup.groupNumber} animateKey={animateKey} compact className="mt-4" />
               <Button className="mt-3 w-full bg-orange-500 text-white hover:bg-orange-600" onClick={() => setAnimateKey((value) => value + 1)}><Play className="size-4" />播放货车测试</Button>
             </div>
             <div className="flex flex-col">
@@ -174,6 +180,7 @@ export function RouteCompareScene({ state, updateState }: { state: ClassroomStat
   }, [completed]);
   const [selected, setSelected] = useState<number[]>(defaults);
   const [animateKey, setAnimateKey] = useState(0);
+  const [cameraView, setCameraView] = useState<MountainCameraView>();
 
   const validSelected = selected.filter((number) => completed.some((group) => group.groupNumber === number));
   const activeSelected = validSelected.length >= Math.min(2, completed.length) ? validSelected : defaults;
@@ -183,15 +190,19 @@ export function RouteCompareScene({ state, updateState }: { state: ClassroomStat
   }
 
   const compared = activeSelected.map((number) => completed.find((group) => group.groupNumber === number)).filter((group): group is GroupRecord & { routePlan: RoutePlan } => Boolean(group?.routePlan));
-  const routes = compared.map((group) => ({ groupNumber: group.groupNumber, plan: group.routePlan, color: GROUP_ROUTE_COLORS[group.groupNumber - 1] }));
-
   return (
     <div className="flex h-full flex-col overflow-hidden p-[clamp(1.25rem,2.4vw,2.35rem)]">
       <div className="flex items-start justify-between gap-5"><div><ScenePill icon={Columns2}>板块 2 · 路线证据比较</ScenePill><h2 className="mt-3 text-[clamp(2rem,3.2vw,3.35rem)] font-black leading-tight">同样到达山顶，哪条路线更合理？</h2></div><div className="flex max-w-[58%] flex-wrap justify-end gap-2"><Button variant="outline" onClick={() => void updateState({ scene: 6 })}><Route className="size-4" /> 返回路线作品墙</Button>{completed.map((group) => <button key={group.groupNumber} type="button" aria-pressed={activeSelected.includes(group.groupNumber)} onClick={() => toggleGroup(group.groupNumber)} className={`rounded-full border-2 px-3 py-2 text-sm font-black ${activeSelected.includes(group.groupNumber) ? 'border-transparent text-white' : 'border-slate-200 bg-white text-slate-600'}`} style={activeSelected.includes(group.groupNumber) ? { background: GROUP_ROUTE_COLORS[group.groupNumber - 1] } : undefined}>第{group.groupNumber}组</button>)}</div></div>
 
       {compared.length ? (
         <div className="mt-4 grid min-h-0 flex-1 grid-cols-[1.1fr_0.9fr] gap-5">
-          <div className="flex min-h-0 flex-col rounded-[1.75rem] bg-slate-50 p-3"><RouteOverlayMap routes={routes} animateKey={animateKey} className="min-h-0 flex-1" /><Button className="mt-3 bg-orange-500 text-white hover:bg-orange-600" onClick={() => setAnimateKey((value) => value + 1)}><Play className="size-4" />同步播放两条路线</Button></div>
+          <div className="flex min-h-0 flex-col rounded-[1.75rem] bg-slate-50 p-3">
+            <div className={`grid min-h-0 flex-1 gap-3 ${compared.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {compared.map((group) => <div key={group.groupNumber} className="relative min-h-0 overflow-hidden rounded-2xl bg-white"><span className="absolute left-3 top-3 z-10 rounded-full px-3 py-1 text-xs font-black text-white shadow" style={{ background: GROUP_ROUTE_COLORS[group.groupNumber - 1] }}>第{group.groupNumber}组</span><MountainRoadLab plan={group.routePlan} color={GROUP_ROUTE_COLORS[group.groupNumber - 1]} animateKey={animateKey} compact className="h-full" cameraView={cameraView} onCameraChange={setCameraView} /></div>)}
+            </div>
+            <p className="mt-2 text-center text-xs font-black text-slate-500">旋转任一山体，两侧观察视角会自动同步。</p>
+            <Button className="mt-2 bg-orange-500 text-white hover:bg-orange-600" onClick={() => setAnimateKey((value) => value + 1)}><Play className="size-4" />同步播放两条路线</Button>
+          </div>
           <div className="flex min-h-0 flex-col overflow-auto rounded-[1.75rem] border border-slate-200 bg-white p-5">
             <p className="text-lg font-black">学生证据对照</p>
             <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200"><table className="w-full text-sm"><thead><tr className="bg-slate-100"><th className="p-3 text-left">证据</th>{compared.map((group) => <th key={group.groupNumber} className="p-3 text-center" style={{ color: GROUP_ROUTE_COLORS[group.groupNumber - 1] }}>第{group.groupNumber}组</th>)}</tr></thead><tbody>{[['设计目标', (g: GroupRecord) => g.routePlan?.strategy], ['相对路程', (g: GroupRecord) => `${g.routeMetrics?.lengthRatio} 倍（${g.routeMetrics?.lengthLabel}）`], ['最陡路段', (g: GroupRecord) => g.routeMetrics?.steepnessLabel], ['转弯次数', (g: GroupRecord) => `${g.routeMetrics?.turnCount} 次`]].map(([label, read]) => <tr key={String(label)} className="border-t border-slate-100"><th className="p-3 text-left font-black text-slate-500">{String(label)}</th>{compared.map((group) => <td key={group.groupNumber} className="p-3 text-center font-black">{(read as (g: GroupRecord) => React.ReactNode)(group)}</td>)}</tr>)}</tbody></table></div>

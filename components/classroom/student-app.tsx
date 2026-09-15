@@ -193,7 +193,7 @@ function MeasurementForm({ initial, conclusion, disabled, submit, answerRevealed
 }
 
 function RouteForm({ initial, groupNumber, disabled, submit }: { initial?: RoutePlan | null; groupNumber?: number; disabled: boolean; submit: (payload: Record<string, unknown>) => Promise<void> }) {
-  return <TaskCard label="板块 2" title="设计上山路线" intro="拖动三个路线节点，比较路程与坡度，测试后提交你们的路线作品。"><RoutePlanner initial={initial} groupNumber={groupNumber} disabled={disabled} onSubmit={(routePlan) => submit({ kind: 'route', routePlan })} /></TaskCard>;
+  return <TaskCard label="板块 2" title="搭建 3D 上山路线" intro="在立体山地上逐段修路，旋转观察坡度，调整节点并试跑货车，再提交你们的工程作品。"><RoutePlanner initial={initial} groupNumber={groupNumber} disabled={disabled} onSubmit={(routePlan) => submit({ kind: 'route', routePlan })} /></TaskCard>;
 }
 
 function TaskCard({ label, title, intro, children }: { label: string; title: string; intro: string; children: React.ReactNode }) {

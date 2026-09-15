@@ -284,7 +284,7 @@ export function TeacherApp({ code }: { code: string }) {
 
   function exportCsv() {
     if (!state) return;
-    const header = ['小组', ...CONDITIONS.flatMap((item) => [`${item.label}1`, `${item.label}2`, `${item.label}3`, `${item.label}平均`]), '小组发现', '路线类型', '设计目标', '节点1', '节点2', '节点3', '相对路程', '最陡路段', '转弯次数', '证据标签', '路线理由'];
+    const header = ['小组', ...CONDITIONS.flatMap((item) => [`${item.label}1`, `${item.label}2`, `${item.label}3`, `${item.label}平均`]), '小组发现', '路线类型', '设计目标', '二维兼容节点1', '二维兼容节点2', '二维兼容节点3', '3D节点数', '3D山路节点(JSON)', '相对路程', '最陡路段', '转弯次数', '急转弯数', '证据标签', '路线理由'];
     const rows = state.groups.map((group) => [
       `第${group.groupNumber}组`,
       ...CONDITIONS.flatMap(({ key }) => {
@@ -295,9 +295,12 @@ export function TeacherApp({ code }: { code: string }) {
       group.routeType || '',
       group.routePlan?.strategy || '',
       ...(group.routePlan?.waypointXs || ['', '', '']),
+      group.routePlan?.mountain?.nodes.length || '',
+      group.routePlan?.mountain ? JSON.stringify(group.routePlan.mountain.nodes) : '',
       group.routeMetrics?.lengthRatio || '',
       group.routeMetrics?.steepnessLabel || '',
       group.routeMetrics?.turnCount ?? '',
+      group.routeMetrics?.sharpTurns ?? '',
       group.routePlan?.evidenceTags.join('、') || '',
       group.routeReason || '',
     ]);
