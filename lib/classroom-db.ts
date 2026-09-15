@@ -1,7 +1,13 @@
 import cloudbase from '@cloudbase/node-sdk';
 import type { IMySqlClient } from '@cloudbase/wx-cloud-client-sdk';
 
-import type { ClassroomState, GroupRecord, Measurements } from '@/lib/classroom-types';
+import type { ClassroomState } from '@/lib/classroom-types';
+import type {
+  CreateClassroomInput,
+  GroupRow,
+  SessionRow,
+} from '@/lib/classroom-storage-types';
+import * as localStore from '@/lib/local-classroom-store';
 import {
   calculateRouteMetrics,
   isRoutePlan,
@@ -13,37 +19,8 @@ import {
 const SESSIONS = 'classroom_sessions';
 const GROUPS = 'classroom_groups';
 
-type SessionRow = {
-  code: string;
-  teacher_token_hash: string;
-  group_count: number;
-  scene: number;
-  answer_revealed: boolean;
-  engineering_revealed: boolean;
-  submissions_paused: boolean;
-  started_at: string;
-  expires_at: string;
-  updated_at: string;
-};
-
-type GroupRow = {
-  session_code: string;
-  group_number: number;
-  device_token_hash: string | null;
-  joined_at: string | null;
-  last_seen_at: string | null;
-  prediction: string | null;
-  measurements: Measurements | null;
-  conclusion: string | null;
-  route_type: string | null;
-  route_reason: string | null;
-  route_plan: RoutePlan | null;
-  status: GroupRecord['status'];
-  measurement_status: GroupRecord['measurementStatus'];
-  route_status: GroupRecord['routeStatus'];
-};
-
 type PgResult<T> = { data: T | null; error: { message?: string } | null };
+const useLocalStorage = process.env.CLASSROOM_STORAGE === 'local';
 
 let cloudbaseApp: ReturnType<typeof cloudbase.init> | null = null;
 type CloudBaseWithRdb = ReturnType<typeof cloudbase.init> & { rdb: IMySqlClient };
@@ -66,6 +43,7 @@ function dataOrThrow<T>(result: PgResult<T>, operation: string): T {
 }
 
 export async function sessionByCode(code: string) {
+  if (useLocalStorage) return localStore.sessionByCode(code);
   const result = (await relationalDatabase()
     .from(SESSIONS)
     .select('*')
@@ -75,6 +53,7 @@ export async function sessionByCode(code: string) {
 }
 
 export async function groupByNumber(code: string, groupNumber: number) {
+  if (useLocalStorage) return localStore.groupByNumber(code, groupNumber);
   const result = (await relationalDatabase()
     .from(GROUPS)
     .select('*')
@@ -85,6 +64,7 @@ export async function groupByNumber(code: string, groupNumber: number) {
 }
 
 export async function groupsForSession(code: string): Promise<GroupRow[]> {
+  if (useLocalStorage) return localStore.groupsForSession(code);
   const result = (await relationalDatabase()
     .from(GROUPS)
     .select('*')
@@ -94,6 +74,7 @@ export async function groupsForSession(code: string): Promise<GroupRow[]> {
 }
 
 export async function deleteExpiredClassrooms(now: string) {
+  if (useLocalStorage) return localStore.deleteExpiredClassrooms(now);
   const result = (await relationalDatabase()
     .from(SESSIONS)
     .delete()
@@ -107,13 +88,16 @@ export async function createClassroomRecords({
   groupCount,
   startedAt,
   expiresAt,
-}: {
-  code: string;
-  teacherTokenHash: string;
-  groupCount: number;
-  startedAt: string;
-  expiresAt: string;
-}) {
+}: CreateClassroomInput) {
+  if (useLocalStorage) {
+    return localStore.createClassroomRecords({
+      code,
+      teacherTokenHash,
+      groupCount,
+      startedAt,
+      expiresAt,
+    });
+  }
   const session: SessionRow = {
     code,
     teacher_token_hash: teacherTokenHash,
@@ -155,6 +139,7 @@ export async function createClassroomRecords({
 }
 
 export async function updateSessionRecord(code: string, updates: Partial<SessionRow>) {
+  if (useLocalStorage) return localStore.updateSessionRecord(code, updates);
   const result = (await relationalDatabase()
     .from(SESSIONS)
     .update(updates)
@@ -167,6 +152,7 @@ export async function updateGroupRecord(
   groupNumber: number,
   updates: Partial<GroupRow>,
 ) {
+  if (useLocalStorage) return localStore.updateGroupRecord(code, groupNumber, updates);
   const result = (await relationalDatabase()
     .from(GROUPS)
     .update(updates)
@@ -176,6 +162,7 @@ export async function updateGroupRecord(
 }
 
 export async function updateAllGroups(code: string, updates: Partial<GroupRow>) {
+  if (useLocalStorage) return localStore.updateAllGroups(code, updates);
   const result = (await relationalDatabase()
     .from(GROUPS)
     .update(updates)
@@ -184,6 +171,7 @@ export async function updateAllGroups(code: string, updates: Partial<GroupRow>) 
 }
 
 export async function claimGroup(code: string, groupNumber: number, deviceTokenHash: string) {
+  if (useLocalStorage) return localStore.claimGroup(code, groupNumber, deviceTokenHash);
   const now = new Date().toISOString();
   const result = (await relationalDatabase()
     .from(GROUPS)
@@ -199,6 +187,7 @@ export async function claimGroup(code: string, groupNumber: number, deviceTokenH
 }
 
 export async function touchGroupByToken(code: string, tokenHash: string) {
+  if (useLocalStorage) return localStore.touchGroupByToken(code, tokenHash);
   const result = (await relationalDatabase()
     .from(GROUPS)
     .update({ last_seen_at: new Date().toISOString() })
@@ -231,6 +220,10 @@ export async function groupForToken(request: Request, code: string) {
   const token = bearer(request);
   if (!token) return null;
   const tokenHash = await hashToken(token);
+  if (useLocalStorage) {
+    const group = await localStore.groupForTokenHash(code, tokenHash);
+    return group ? { groupNumber: group.group_number } : null;
+  }
   const result = (await relationalDatabase()
     .from(GROUPS)
     .select('group_number')

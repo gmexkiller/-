@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build && node scripts/prepare-cloudbase.mjs",
+    "build:lan": "next build && node scripts/prepare-lan.mjs",
     "build:sites": "vinext build",
     "start": "next start -p 9000 -H 0.0.0.0",
     "lint": "oxlint",

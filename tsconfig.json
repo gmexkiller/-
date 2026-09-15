@@ -43,6 +43,8 @@
     "node_modules",
     "db",
     "drizzle",
+    "cloudfunctions",
+    "output",
     "vite.config.ts"
   ]
 }

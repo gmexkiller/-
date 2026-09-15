@@ -40,3 +40,4 @@ next-env.d.ts
 /.playwright-cli/
 /tsconfig.tsbuildinfo
 /cloudfunctions/
+/data/local-classrooms*.json

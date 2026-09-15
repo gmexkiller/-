@@ -86,6 +86,17 @@ export function TeacherApp({ code }: { code: string }) {
   useEffect(() => {
     setTeacherToken(localStorage.getItem(`incline:teacher:${code}`) || '');
     setJoinUrl(`${location.origin}/join/${code}`);
+    void fetch('/api/runtime', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return (await response.json()) as { mode?: string; joinOrigin?: string | null };
+      })
+      .then((runtime) => {
+        if (runtime?.mode === 'lan' && runtime.joinOrigin) {
+          setJoinUrl(`${runtime.joinOrigin}/join/${code}`);
+        }
+      })
+      .catch(() => undefined);
     const cached = localStorage.getItem(`incline:state:${code}`);
     if (cached) {
       try {
