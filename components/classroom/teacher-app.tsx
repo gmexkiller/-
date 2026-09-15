@@ -39,6 +39,7 @@ import {
   Measurements,
 } from '@/lib/classroom-types';
 import { calculateRouteMetrics, type RoutePlan } from '@/lib/route-design';
+import { useAdaptivePolling } from '@/lib/use-adaptive-polling';
 
 const SCENES = [
   '全班数据汇总',
@@ -113,16 +114,11 @@ export function TeacherApp({ code }: { code: string }) {
       setError('');
     } catch (caught) {
       setOffline(true);
-      if (!state) setError(caught instanceof Error ? caught.message : '课堂读取失败');
+      setError(caught instanceof Error ? caught.message : '课堂读取失败');
     }
-  }, [code, pendingSync, state, teacherToken]);
+  }, [code, pendingSync, teacherToken]);
 
-  useEffect(() => {
-    if (!teacherToken) return;
-    void fetchState();
-    const interval = window.setInterval(fetchState, 2000);
-    return () => window.clearInterval(interval);
-  }, [fetchState, teacherToken]);
+  useAdaptivePolling(fetchState, { enabled: Boolean(teacherToken), intervalMs: 5000 });
 
   useEffect(() => {
     if (!timerRunning) return;

@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { RoutePlanner } from '@/components/classroom/route-planner';
 import type { RoutePlan } from '@/lib/route-design';
+import { useAdaptivePolling } from '@/lib/use-adaptive-polling';
 import {
   average,
   ClassroomState,
@@ -78,11 +79,7 @@ export function StudentApp({ code }: { code: string }) {
     }
   }, [code, identity]);
 
-  useEffect(() => {
-    void fetchState();
-    const interval = window.setInterval(fetchState, 2000);
-    return () => window.clearInterval(interval);
-  }, [fetchState]);
+  useAdaptivePolling(fetchState, { intervalMs: 10000 });
 
   async function join(groupNumber: number) {
     setJoining(groupNumber);
